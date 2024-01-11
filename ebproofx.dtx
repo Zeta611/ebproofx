@@ -1,0 +1,1218 @@
+% \iffalse meta-comment
+%
+% Copyright (C) 2024 by Jay Lee
+% Extended from the ebproof package by Emmanuel Beffara
+%
+% This file may be distributed and/or modified under the conditions of the
+% LaTeX Project Public License, either version 1.3 of this license or (at
+% your option) any later version. The latest version of this license is in:
+%
+%   http://www.latex-project.org/lppl.txt
+%
+% and version 1.3 or later is part of all distributions of LaTeX version
+% 2005/12/01 or later.
+%
+%<*driver>
+\documentclass[full]{l3doc}
+\usepackage{ebproofx}
+\usepackage{multicol}
+\usepackage{tikz}
+\usepackage{libertine}
+\usepackage[libertine]{newtxmath}
+\usepackage{inconsolata}
+\usetikzlibrary{decorations.pathmorphing}
+\EnableCrossrefs
+\newenvironment{example}{%
+  \VerbatimEnvironment
+  \begin{VerbatimOut}{example.tex}}{%
+  \end{VerbatimOut}
+  \begin{center}
+  \begin{minipage}{.4\textwidth}
+    \input{example.tex}
+  \end{minipage}%
+  \begin{minipage}{.6\textwidth}
+    \small\VerbatimInput[gobble=0]{example.tex}
+  \end{minipage}%
+  \end{center}
+}
+\newcommand{\vdasharrow}{%
+  \mathrel{%
+    \vdash\hspace*{-4.5pt}%
+    \raisebox{1.60pt}{\scalebox{.4}{\(\blacktriangleright\)}}%
+  }%
+}
+\begin{document}
+  \DocInput{\jobname.dtx}
+\end{document}
+%</driver>
+% \fi
+%
+% \title{^^A
+%   The \pkg{ebproofx} package \\
+%   \pkg{ebproof} extended^^A
+% }
+%
+% \author{^^A
+%   Jay Lee\thanks
+%     {^^A
+%       E-mail:  \href{mailto:jaeho.lee@snu.ac.kr}{jaeho.lee@snu.ac.kr}^^A
+%     }^^A
+% }
+%
+% \date{Version 1.0.0 -- Released 2024-01-10}
+%
+% \maketitle
+%
+% \setcounter{tocdepth}{2}
+% \begin{multicols}{2}
+% \tableofcontents
+% \end{multicols}
+%
+% \begin{documentation}
+%
+% \section{Introduction}
+%
+% The \pkg{ebproofx} package provides commands to typeset proof trees and rules, in the
+% style of sequent calculus and related systems.
+
+% This is an extended work of \href{https://ctan.org/pkg/ebproof}{\pkg{ebproof}} that allows users to stack multiple hypotheses vertically\footnote{This example is taken from \textit{Types and Programming Languages} by Benjamin C. Pierce.}:
+% \begin{example}
+%   \begin{InfRule}{TA-App}
+%     \hypo{\Gamma \vdasharrow t_1 : T_1}
+%     \hypo{%
+%       \Gamma \vdasharrow%
+%       T_1 \Uparrow (T_{11} \to T_{12})}
+%     \hypo{\Gamma \vdasharrow t_2 : T_2}
+%     \hypo{\Gamma \vdasharrow T_2 <: T_{11}}
+%     \infer{2, 2}{%
+%       \Gamma \vdasharrow t_1\ t_2 : T_{12}}
+%   \end{InfRule}
+% \end{example}
+%
+%
+% The web page of the project is at \url{https://github.com/Zeta611/ebproofx}.
+%
+% \section{Environments}
+%
+% \begin{function}{prooftree,prooftree*}
+%   \begin{syntax}
+%     \verb|\begin{prooftree}|\oarg{options}
+%     ~ \meta{statements}
+%     \verb|\end{prooftree}|
+%   \end{syntax}
+%   The package provides the \env{prooftree} environment, in standard and
+%   starred variants.
+%   This typesets the proof tree described by the \meta{statements}, as
+%   described in section~\ref{sec:statements}.
+%   The \meta{options} provide default formatting options for the proof tree,
+%   available options are described in section~\ref{sec:options}.
+%
+%   Following the conventions of \pkg{amsmath} for alignment environments, the
+%   non-starred version produces a proof tree at the current position in the
+%   text flow (it can be used in math mode or text mode) while the starred
+%   version typesets the proof on a line of its own, like a displayed formula.
+% \end{function}
+%
+% \begin{example}
+%   \[
+%     \begin{prooftree}
+%       \infer0{ \vdash A }
+%       \hypo{ \vdash B } \infer1{ \vdash B, C }
+%       \infer2{ \vdash A\wedge B, C }
+%     \end{prooftree}
+%     \quad \rightsquigarrow \quad
+%     \begin{prooftree}
+%       \infer0{ \vdash A } \hypo{ \vdash B }
+%       \infer2{ \vdash A\wedge B }
+%       \infer1{ \vdash A\wedge B, C }
+%     \end{prooftree}
+%   \]
+% \end{example}
+%
+% \section{Statements}
+% \label{sec:statements}
+%
+% Statements describe proofs in postfix notation: when typesetting a proof tree
+% whose last rule has, say, two premisses, you will first write statements for
+% the subtree of the first premiss, then statements for the subtree of the
+% second premiss, then a statement like \cs{infer2}\{\meta{conclusion}\} to
+% build an inference with these two subtrees as premisses and the given text as
+% conclusion.
+%
+%
+% \end{documentation}
+%
+% \clearpage \appendix
+%
+% \begin{implementation}
+%
+% \section{Implementation}
+%
+%    \begin{macrocode}
+%<*package>
+\NeedsTeXFormat{LaTeX2e}
+\RequirePackage{expl3}
+\RequirePackage{xparse}
+\RequirePackage{relsize}
+\RequirePackage{tabularray}
+\ProvidesExplPackage{ebproofx}{2024/01/10}{1.0.0}{ebproof eXtended}
+%<@@=ebproofx>
+%    \end{macrocode}
+%
+% \subsection{Parameters}
+%
+% We first declare all options. For the meaning of options, see
+% section~\ref{sec:options}.
+%
+%    \begin{macrocode}
+\bool_new:N \l_@@_updown_bool
+\keys_define:nn { ebproofx } {
+center .bool_set:N = \l_@@_center_bool,
+proof~style .choice: ,
+proof~style / upwards .code:n = \bool_set_false:N \l_@@_uprown_bool,
+proof~style / downwards .code:n = \bool_set_true:N \l_@@_updown_bool,
+separation .dim_set:N = \l_@@_separation_dim,
+rule~margin .dim_set:N = \l_@@_rule_margin_dim,
+rule~thickness .dim_set:N = \l_@@_rule_thickness_dim,
+rule~separation .dim_set:N = \l_@@_rule_separation_dim,
+rule~dash~length .dim_set:N = \l_@@_rule_dash_length_dim,
+rule~dash~space .dim_set:N = \l_@@_rule_dash_space_dim,
+rule~code .tl_set:N = \l_@@_rule_code_tl,
+rule~style .choice:,
+template .tl_set:N = \l_@@_template_tl,
+left~template .tl_set:N = \l_@@_left_template_tl,
+right~template .tl_set:N = \l_@@_right_template_tl,
+left~label .tl_set:N = \l_@@_left_label_tl,
+right~label .tl_set:N = \l_@@_right_label_tl,
+left~label~template .tl_set:N = \l_@@_left_label_template_tl,
+right~label~template .tl_set:N = \l_@@_right_label_template_tl,
+label~separation .dim_set:N = \l_@@_label_separation_dim,
+label~axis .dim_set:N = \l_@@_label_axis_dim,
+}
+%    \end{macrocode}
+%
+% \begin{macro}{\ebproofxnewrulestyle}
+%   We then define the document-level macro \cs{ebproofxnewrulestyle} and use
+%   it to define the default styles. This simply consists in defining a
+%   meta-key.
+%    \begin{macrocode}
+\NewDocumentCommand \ebproofxnewrulestyle { mm } {
+  \keys_define:nn { ebproofx } {
+    rule~style / #1 .meta:nn = { ebproofx } { #2 }
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% The styles |simple|, |no rule| and |double| are defined in a straightforward
+% way.
+%
+%    \begin{macrocode}
+\ebproofxnewrulestyle { simple } {
+  rule~code = { \tex_hrule:D height \l_@@_rule_thickness_dim }
+}
+\ebproofxnewrulestyle { no~rule } {
+  rule~code =
+}
+\ebproofxnewrulestyle { double } {
+  rule~code = {
+    \tex_hrule:D height \l_@@_rule_thickness_dim
+    \skip_vertical:N \l_@@_rule_separation_dim
+    \tex_hrule:D height \l_@@_rule_thickness_dim
+  }
+}
+%    \end{macrocode}
+%
+% The |dashed| style uses leaders and filling for repeating a single dash. We
+% use \TeX\ primitives that have no \LaTeX3 counterpart for this.
+%
+%    \begin{macrocode}
+\ebproofxnewrulestyle { dashed } {
+  rule~code = {
+    \hbox_to_wd:nn { \tex_hsize:D } {
+      \dim_set:Nn \l_tmpa_dim { \l_@@_rule_dash_space_dim / 2 }
+      \skip_horizontal:n { -\l_tmpa_dim }
+      \tex_cleaders:D \hbox:n {
+        \skip_horizontal:N \l_tmpa_dim
+        \tex_vrule:D
+          height \l_@@_rule_thickness_dim
+          width \l_@@_rule_dash_length_dim
+        \skip_horizontal:N \l_tmpa_dim
+      } \tex_hfill:D
+      \skip_horizontal:n { -\l_tmpa_dim }
+    }
+  }
+}
+%    \end{macrocode}
+%
+% Now we can define the default values, including the default rule style.
+%
+%    \begin{macrocode}
+\keys_set:nn { ebproofx } {
+  center = true,
+  proof~style = upwards,
+  separation = 1.5em,
+  rule~margin = .7ex,
+  rule~thickness = .4pt,
+  rule~separation = 2pt,
+  rule~dash~length = .2em,
+  rule~dash~space = .3em,
+  rule~style = simple,
+  template = $\inserttext$,
+  left~template = $\inserttext\mathrel{}$,
+  right~template = $\mathrel{}\inserttext$,
+  left~label = ,
+  right~label = ,
+  left~label~template = \inserttext,
+  right~label~template = \inserttext,
+  label~separation = 0.5em,
+  label~axis = 0.5ex
+}
+%    \end{macrocode}
+%
+% \begin{macro}{\ebproofxnewstyle}
+%   Defining a style simply means defining a meta-key.
+%    \begin{macrocode}
+\NewDocumentCommand \ebproofxnewstyle { mm } {
+  \keys_define:nn { ebproofx } { #1 .meta:n = { #2 } }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+%
+% \subsection{Proof boxes}
+%
+% \TeX\ does not actually provide data structures, so we have to encode things.
+% We provide an allocator for ``registers'' holding boxes with attributes. Such
+% a register consists in a box register and a property list for marks, which
+% maps mark names to values as explicit dimensions with units.
+%
+% \begin{macro}{\@@_new:N}
+%   Using only public interfaces forces a convoluted approach to allocation:
+%   we use a global counter \cs{g_ebproofx_register_int} to number registers,
+%   then each allocation creates registers named \cs{S_ebproofx_K_N} where
+%   S is the scope of the register (local or global, deduced from the argument),
+%   K is the kind of component (box or marks) and N is the identifier of the
+%   register. The proof box register itself only contains the identifier used
+%   for indirection.
+%    \begin{macrocode}
+\int_new:N \g_@@_register_int
+\cs_new:Nn \@@_box:N {
+  \str_item:nn { #1 } { 2 } __ebproofx_ \tl_use:N #1 _box
+}
+\cs_new:Nn \@@_marks:N {
+  \str_item:nn { #1 } { 2 } __ebproofx_ \tl_use:N #1 _prop
+}
+\cs_new:Nn \@@_new:N {
+  \tl_new:N #1
+  \int_gincr:N \g_@@_register_int
+  \str_if_eq:eeTF { \str_item:nn { #1 } { 2 } } { g }
+    { \tl_gset:Nx #1 { \int_to_arabic:n { \g_@@_register_int } } }
+    { \tl_set:Nx #1 { \int_to_arabic:n { \g_@@_register_int } } }
+  \box_new:c { \@@_box:N #1 }
+  \prop_new:c { \@@_marks:N #1 }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_clear:N}
+%   The box is cleared by setting it to an empty hbox.
+%   Using \cs{box_clear:N} instead would not work because trying to push this
+%   box on the stack would not actually append any box.
+%    \begin{macrocode}
+\cs_new:Nn \@@_clear:N {
+  \hbox_set:cn { \@@_box:N #1 } {}
+  \prop_clear:c { \@@_marks:N #1 }
+  \@@_set_mark:Nnn #1 { left } { 0pt }
+  \@@_set_mark:Nnn #1 { right } { 0pt }
+  \@@_set_mark:Nnn #1 { axis } { 0pt }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsubsection{Mark operations}
+%
+% \begin{macro}{\@@_set_mark:Nnn}
+%   Setting the value of a mark uses a temporary register to evaluate the
+%   dimension expression because values are stored textually in a property
+%   list.
+%    \begin{macrocode}
+\dim_new:N \l_@@_transit_dim
+\cs_new:Nn \@@_set_mark:Nnn {
+  \dim_set:Nn \l_@@_transit_dim { #3 }
+  \prop_put:cnV { \@@_marks:N #1 } { #2 }
+    \l_@@_transit_dim
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_mark:Nn}
+%   Getting the value of a mark simply consists in getting an item in a
+%   property list.
+%    \begin{macrocode}
+\cs_new:Nn \@@_mark:Nn {
+  \prop_item:cn { \@@_marks:N #1 } { #2 }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_shift_x:Nn}
+%   This function shifts the marks by a specified amount, without modifying
+%   the box.
+%    \begin{macrocode}
+\cs_new:Nn \@@_shift_x:Nn {
+  \prop_map_inline:cn { \@@_marks:N #1 } {
+    \@@_set_mark:Nnn #1 { ##1 } { ##2 + #2 }
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_enlarge_conclusion:NN}
+%   This function moves the left and right marks of the first tree so that
+%   they are at least as far from the axis as they are in the second tree. 
+%   For instance we get the following:
+%   \begin{center}
+%     \begin{tikzpicture}[y=-3ex]
+%       \node (L1) at (1,0) {L}; \node (A1) at (2,0) {A}; \node (R1) at (4,0) {R};
+%       \node (L2) at (0,1) {L}; \node (A2) at (2,1) {A}; \node (R2) at (3,1) {R};
+%       \node (L3) at (0,2) {L}; \node (A3) at (2,2) {A}; \node (R3) at (4,2) {R};
+%       \draw (L1) -- (A1) -- (R1);
+%       \draw (L2) -- (A2) -- (R2);
+%       \draw (L3) -- (A3) -- (R3);
+%       \node[anchor=west] at (5,0) {box 1 before};
+%       \node[anchor=west] at (5,1) {box 2 before};
+%       \node[anchor=west] at (5,2) {box 1 after};
+%     \end{tikzpicture}
+%   \end{center}
+%   The contents of the trees are unchanged.
+%    \begin{macrocode}
+\cs_new:Nn \@@_enlarge_conclusion:NN {
+  \dim_set:Nn \l_tmpa_dim { \@@_mark:Nn #1 {axis}
+    + \@@_mark:Nn #2 {left} - \@@_mark:Nn #2 {axis} }
+  \dim_compare:nNnT { \l_tmpa_dim } < { \@@_mark:Nn #1 {left} } {
+    \@@_set_mark:Nnn #1 {left} { \l_tmpa_dim } }
+  \dim_set:Nn \l_tmpa_dim { \@@_mark:Nn #1 {axis}
+    + \@@_mark:Nn #2 {right} - \@@_mark:Nn #2 {axis} }
+  \dim_compare:nNnT { \l_tmpa_dim } > { \@@_mark:Nn #1 {right} } {
+    \@@_set_mark:Nnn #1 {right} { \l_tmpa_dim } }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsubsection{Building blocks}
+%
+% \begin{macro}{\@@_make_simple:Nn}
+%   Make a tree with explicit material in horizontal mode. Set the left and
+%   right marks to extremal positions and set the axis in the middle.
+%    \begin{macrocode}
+\cs_new:Nn \@@_make_simple:Nn {
+  \hbox_set:cn { \@@_box:N #1 } { #2 }
+  \@@_set_mark:Nnn #1 { left } { 0pt }
+  \@@_set_mark:Nnn #1 { axis } { \box_wd:c { \@@_box:N #1 } / 2 }
+  \@@_set_mark:Nnn #1 { right } { \box_wd:c { \@@_box:N #1 } }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_make_split:Nnn}
+%   Make a tree with explicit material in horizontal mode, split in two parts.
+%   Set the left and right marks to extremal positions and set the axis
+%   between the two parts.
+%    \begin{macrocode}
+\cs_new:Nn \@@_make_split:Nnn {
+  \@@_set_mark:Nnn #1 { left } { 0pt }
+  \hbox_set:cn { \@@_box:N #1 } { #2 }
+  \@@_set_mark:Nnn #1 { axis } { \box_wd:c { \@@_box:N #1 } }
+  \hbox_set:cn { \@@_box:N #1 } { \hbox_unpack:c { \@@_box:N #1 } #3 }
+  \@@_set_mark:Nnn #1 { right } { \box_wd:c { \@@_box:N #1 } }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_make_vertical:Nnnn}
+%   Make a tree with explicit material in vertical mode, using an explicit
+%   width and axis.
+%    \begin{macrocode}
+\cs_new:Nn \@@_make_vertical:Nnnn {
+  \@@_set_mark:Nnn #1 { left } { 0pt }
+  \@@_set_mark:Nnn #1 { axis } { #2 }
+  \@@_set_mark:Nnn #1 { right } { #3 }
+  \vbox_set:cn { \@@_box:N #1 } {
+    \dim_set:Nn \tex_hsize:D { \@@_mark:Nn #1 {right} }
+    #4
+  }
+  \box_set_wd:cn { \@@_box:N #1 } { \@@_mark:Nn #1 {right} }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsubsection{Assembling boxes}
+%
+% \begin{macro}{\@@_extend:Nnnnn}
+%   Extend a tree box. The marks are shifted so that alignment is preserved.
+%   The arguments are dimensions for the left, top, right and bottom sides
+%   respectively.
+%    \begin{macrocode}
+\cs_new:Nn \@@_extend:Nnnnn {
+  \dim_compare:nNnF { #2 } = { 0pt } {
+    \hbox_set:cn { \@@_box:N #1 } {
+      \skip_horizontal:n { #2 }
+      \box_use:c { \@@_box:N #1 }
+    }
+    \@@_shift_x:Nn #1 { #2 }
+  }
+  \box_set_ht:Nn #1 { \box_ht:c { \@@_box:N #1 } + #3 }
+  \box_set_wd:Nn #1 { \box_wd:c { \@@_box:N #1 } + #4 }
+  \box_set_dp:Nn #1 { \box_dp:c { \@@_box:N #1 } + #5 }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_append_right:NnN}
+%   Append the contents of the second tree to the first one on the right, with
+%   matching baselines. The marks of both trees are preserved. The middle
+%   argument specifies the space to insert between boxes.
+%    \begin{macrocode}
+\cs_new:Nn \@@_append_right:NnN {
+  \hbox_set:cn { \@@_box:N #1 } {
+    \box_use:c { \@@_box:N #1 }
+    \dim_compare:nNnF { #2 } = { 0pt } { \skip_horizontal:n { #2 } }
+    \box_use:c { \@@_box:N #3 }
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_append_left:NnN}
+%   Append the contents of the second tree to the first one on the left, with
+%   matching baselines. The marks of the first tree are shifted accordingly.
+%   The middle argument specifies the space to insert between boxes.
+%    \begin{macrocode}
+\cs_new:Nn \@@_append_left:NnN {
+  \@@_shift_x:Nn #1 { \box_wd:c { \@@_box:N #3 } + #2 }
+  \hbox_set:cn { \@@_box:N #1 } {
+    \box_use:c { \@@_box:N #3 }
+    \dim_compare:nNnF { #2 } = { 0pt } { \skip_horizontal:n { #2 } }
+    \box_use:c { \@@_box:N #1 }
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_align:NN}
+%   Shift one of two trees to the right so that their axes match. The marks of
+%   the one that is shifted are updated accordingly.
+%    \begin{macrocode}
+\cs_new:Nn \@@_align:NN {
+  \dim_set:Nn \l_tmpa_dim
+    { \@@_mark:Nn #2 {axis} - \@@_mark:Nn #1 {axis} }
+  \dim_compare:nNnTF \l_tmpa_dim < { 0pt } {
+    \@@_extend:Nnnnn #2 { -\l_tmpa_dim } { 0pt } { 0pt } { 0pt }
+  } {
+    \@@_extend:Nnnnn #1 { \l_tmpa_dim } { 0pt } { 0pt } { 0pt }
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_append_above:NN}
+%   Append the contents of the second tree above the first one, with matching
+%   axes. The marks of the first tree are preserved.
+%    \begin{macrocode}
+\cs_new:Nn \@@_append_above:NN {
+  \@@_align:NN #1 #2
+  \vbox_set:cn  { \@@_box:N #1 } {
+    \box_use:c { \@@_box:N #2 }
+    \tex_prevdepth:D -1000pt
+    \box_use:c { \@@_box:N #1 }
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_append_below:NN}
+%   Append the contents of the second tree below the first one, with matching
+%   axes. The marks of the first tree are preserved.
+%    \begin{macrocode}
+\cs_new:Nn \@@_append_below:NN {
+  \@@_align:NN #1 #2
+  \vbox_set_top:cn { \@@_box:N #1 } {
+    \box_use:c { \@@_box:N #1 }
+    \tex_prevdepth:D -1000pt
+    \box_use:c { \@@_box:N #2 }
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_overlay:NN}
+%   Append the second tree as an overlay over the first one, so that the
+%   baselines and axes match. The bounding box of the result adjusts to
+%   contain both trees.
+%    \begin{macrocode}
+\cs_new:Nn \@@_overlay:NN {
+  \@@_align:NN #1 #2
+  \hbox_set:cn { \@@_box:N #1 } {
+    \hbox_overlap_right:n { \box_use:c { \@@_box:N #1 } }
+    \box_use:c { \@@_box:N #2 }
+    \dim_compare:nNnT
+      { \box_wd:c { \@@_box:N #2 } } < { \box_wd:c { \@@_box:N #1 } }
+      { \skip_horizontal:n
+        { \box_wd:c { \@@_box:N #1 } - \box_wd:c { \@@_box:N #2 } } }
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_vcenter:N}
+%   Shift the material in a tree vertically so that the height and depth are
+%   equal (like \TeX's \cs{vcenter} but around the baseline).
+%    \begin{macrocode}
+\cs_new:Nn \@@_vcenter:N {
+  \dim_set:Nn \l_tmpa_dim
+    { ( \box_ht:c { \@@_box:N #1 } - \box_dp:c { \@@_box:N #1 } ) / 2 }
+  \box_set_eq:Nc \l_tmpa_box { \@@_box:N #1 }
+  \hbox_set:cn { \@@_box:N #1 }
+    { \box_move_down:nn { \l_tmpa_dim } { \box_use:N \l_tmpa_box } }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsection{Making inferences}
+%
+% The following commands use the parameters defined at the beginning of the
+% package for actually building proof trees using the commands defined above.
+%
+% \begin{macro}{\@@_append_vertical:NN}
+%   Append the contents of the second tree above or below the first one,
+%   depending on current settings. Axes are aligned and the marks of the first
+%   tree are preserved.
+%    \begin{macrocode}
+\cs_new:Nn \@@_append_vertical:NN {
+  \bool_if:NTF \l_@@_updown_bool
+    { \@@_append_below:NN #1 #2 }
+    { \@@_append_above:NN #1 #2 }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_make_rule_for:NNN}
+%   Make a box containing an inference rule with labels, using the current
+%   settings. The width and axis position are taken as those of the conclusion
+%   of another tree box. The third argument is used as a temporary register
+%   for building labels.
+%    \begin{macrocode}
+\cs_new:Nn \@@_make_rule_for:NNN {
+%    \end{macrocode}
+%   Build the rule.
+%    \begin{macrocode}
+  \@@_make_vertical:Nnnn #1
+    { \@@_mark:Nn #2 {axis} - \@@_mark:Nn #2 {left} }
+    { \@@_mark:Nn #2 {right} - \@@_mark:Nn #2 {left} }
+    {
+      \skip_vertical:N \l_@@_rule_margin_dim
+      \tl_if_empty:NF { \l_@@_rule_code_tl } {
+        \tl_use:N \l_@@_rule_code_tl
+        \skip_vertical:N \l_@@_rule_margin_dim
+      }
+    }
+  \@@_vcenter:N #1
+%    \end{macrocode}
+%   Append the left label.
+%    \begin{macrocode}
+  \tl_if_blank:VF \l_@@_left_label_tl {
+    \@@_make_simple:Nn #3 {
+      \box_move_down:nn { \l_@@_label_axis_dim } { \hbox:n {
+        \cs_set_eq:NN \inserttext \l_@@_left_label_tl
+        \tl_use:N \l_@@_left_label_template_tl
+      } }
+    }
+    \box_set_ht:cn { \@@_box:N #3 } { 0pt }
+    \box_set_dp:cn { \@@_box:N #3 } { 0pt }
+    \@@_append_left:NnN
+      \l_@@_c_box \l_@@_label_separation_dim \l_@@_d_box
+  }
+%    \end{macrocode}
+%   Append the right label.
+%    \begin{macrocode}
+  \tl_if_blank:VF \l_@@_right_label_tl {
+    \@@_make_simple:Nn #3 {
+      \box_move_down:nn { \l_@@_label_axis_dim } { \hbox:n {
+        \cs_set_eq:NN \inserttext \l_@@_right_label_tl
+        \tl_use:N \l_@@_right_label_template_tl
+      } }
+    }
+    \box_set_ht:cn { \@@_box:N #3 } { 0pt }
+    \box_set_dp:cn { \@@_box:N #3 } { 0pt }
+    \@@_append_right:NnN
+      \l_@@_c_box \l_@@_label_separation_dim \l_@@_d_box
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsection{Stack-based interface}
+%
+% \subsubsection{The stack}
+%
+% Logically, box structures are stored on a stack. However, \TeX\ does not
+% provide data structures for that and the grouping mechanism is not flexible
+% enough, so we encode them using what we actually have. A stack for boxes is
+% implemented using a global hbox \cs{g_@@_stack_box} that contains all the
+% boxes successively. A sequence \cs{g_@@_stack_seq} is used to store the
+% dimensions property lists textually. We maintain a counter
+% \cs{g_@@_level_int} with the number of elements on the stack, for
+% consistency checks.
+%    \begin{macrocode}
+\int_new:N \g_@@_level_int
+\box_new:N \g_@@_stack_box
+\seq_new:N \g_@@_stack_seq
+%    \end{macrocode}
+%
+% \begin{macro}{\@@_clear_stack:}
+%   Clear the stack.
+%    \begin{macrocode}
+\cs_new:Nn \@@_clear_stack: {
+  \int_gset:Nn \g_@@_level_int { 0 }
+  \hbox_gset:Nn \g_@@_stack_box { }
+  \seq_gclear:N \g_@@_stack_seq
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_push:N}
+%   Push the contents of a register on the stack.
+%    \begin{macrocode}
+\cs_new:Nn \@@_push:N {
+  \int_gincr:N \g_@@_level_int
+  \hbox_gset:Nn \g_@@_stack_box
+    { \hbox_unpack:N \g_@@_stack_box \box_use:c { \@@_box:N #1 } }
+  \seq_gput_left:Nv \g_@@_stack_seq
+    { \@@_marks:N #1 }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_pop:N}
+%   Pop the value from the top of the stack into a register.
+%    \begin{macrocode}
+\cs_new:Nn \@@_pop:N {
+  \int_compare:nNnTF { \g_@@_level_int } > { 0 } {
+    \int_gdecr:N \g_@@_level_int
+    \hbox_gset:Nn \g_@@_stack_box {
+      \hbox_unpack:N \g_@@_stack_box
+      \box_gset_to_last:N \g_tmpa_box
+    }
+    \box_set_eq_drop:cN { \@@_box:N #1 } \g_tmpa_box
+    \seq_gpop_left:NN \g_@@_stack_seq \l_tmpa_tl
+    \tl_set_eq:cN { \@@_marks:N #1 } \l_tmpa_tl
+  } {
+    \PackageError{ebproofx}{Missing~premiss~in~a~proof~tree}{}
+    \@@_clear:N #1
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsubsection{Assembling trees}
+%
+%    \begin{macrocode}
+\@@_new:N \l_@@_a_box
+\@@_new:N \l_@@_b_box
+\@@_new:N \l_@@_c_box
+\@@_new:N \l_@@_d_box
+%    \end{macrocode}
+%
+% \begin{macro}{\@@_join_horizontal:n}
+%   Join horizontally a number of elements at the top of the stack. If several
+%   trees are joined, use the left mark of the left tree, the right mark of
+%   the right tree and set the axis in the middle of these marks.
+%    \begin{macrocode}
+\cs_new:Nn \@@_join_horizontal:n {
+  \int_case:nnF { #1 } {
+  { 0 } {
+    \group_begin:
+    \@@_clear:N \l_@@_a_box
+    \@@_push:N \l_@@_a_box
+    \group_end:
+  }
+  { 1 } { }
+  } {
+    \group_begin:
+    \@@_pop:N \l_@@_a_box
+    \prg_replicate:nn { #1 - 1 } {
+      \@@_pop:N \l_@@_b_box
+      \@@_append_left:NnN
+        \l_@@_a_box \l_@@_separation_dim \l_@@_b_box
+    }
+    \@@_set_mark:Nnn \l_@@_a_box { left }
+      { \@@_mark:Nn \l_@@_b_box { left } }
+    \@@_set_mark:Nnn \l_@@_a_box { axis }
+      { ( \@@_mark:Nn \l_@@_a_box { left }
+        + \@@_mark:Nn \l_@@_a_box { right } ) / 2 }
+    \@@_push:N \l_@@_a_box
+    \group_end:
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_join_vertical:}
+%   Join vertically the two elements at the top of the stack, with a
+%   horizontal rule of the appropriate size.
+%    \begin{macrocode}
+\cs_new:Nn \@@_join_vertical: {
+  \group_begin:
+  \@@_pop:N \l_@@_a_box
+  \@@_pop:N \l_@@_b_box
+  \@@_enlarge_conclusion:NN \l_@@_b_box \l_@@_a_box
+  \@@_make_rule_for:NNN \l_@@_c_box \l_@@_b_box
+    \l_@@_d_box
+  \@@_append_vertical:NN \l_@@_a_box \l_@@_c_box
+  \@@_append_vertical:NN \l_@@_a_box \l_@@_b_box
+  \@@_push:N \l_@@_a_box
+  \group_end:
+}
+%    \end{macrocode}
+% \end{macro}
+%
+%
+% \subsubsection{High-level commands}
+%
+% \begin{macro}{\@@_statement_parse:w}
+%   An auxiliary function for parsing the argument in
+%   \cs{@@_push_statement:n}.
+%    \begin{macrocode}
+\cs_new:Npn \@@_statement_parse:w #1 & #2 & #3 \q_stop {
+  \tl_if_empty:nTF { #3 } {
+    \@@_make_simple:Nn \l_@@_a_box
+      { \cs_set:Npn \inserttext { #1 } \tl_use:N \l_@@_template_tl }
+  } {
+    \@@_make_split:Nnn \l_@@_a_box
+      { \cs_set:Npn \inserttext { #1 } \tl_use:N \l_@@_left_template_tl }
+      { \cs_set:Npn \inserttext { #2 } \tl_use:N \l_@@_right_template_tl }
+  }
+  \@@_push:N \l_@@_a_box
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_push_statement:n}
+%   Push a box with default formatting, using explicit alignment if the code
+%   contains a |&| character
+%    \begin{macrocode}
+\cs_new:Nn \@@_push_statement:n {
+  \@@_statement_parse:w #1 & & \q_stop
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsection{Document interface}
+%
+% \subsubsection{Functions to define statements}
+%
+% The \cs{g_@@_statements_seq} variable contains the list of all defined
+% statements. For each statement |X|, there is a document command \cs{ebproofxX}
+% and the alias \cs{X} is defined when entering a |prooftree| environment.
+%    \begin{macrocode}
+\seq_new:N \g_@@_statements_seq
+%    \end{macrocode}
+%
+% \begin{macro}{\@@_setup_statements:}
+%   Install the aliases for statements, saving the original value of the control
+%   sequences.
+%    \begin{macrocode}
+\cs_new:Nn \@@_setup_statements: {
+  \seq_map_inline:Nn \g_@@_statements_seq {
+    \cs_set_eq:cc { ebproofx_saved_ ##1 } { ##1 }
+    \cs_set_eq:cc { ##1 } { ebproofx ##1 }
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_restore_statements:}
+%   Restore the saved meanings of the control sequences. This is useful when
+%   interpreting user-provided code in statement arguments. The meanings are
+%   automatically restored when leaving a |prooftree| environment because of
+%   grouping.
+%    \begin{macrocode}
+\cs_new:Nn \@@_restore_statements: {
+  \seq_map_inline:Nn \g_@@_statements_seq {
+    \cs_set_eq:cc { ##1 } { ebproofx_saved_ ##1 }
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_new_statement:nnn}
+%   Define a new statement. The first argument is the name, the second one is
+%   an argument specifier as used by |xparse| and the third one is the body of
+%   the command.
+%    \begin{macrocode}
+\cs_new:Nn \@@_new_statement:nnn {
+  \exp_args:Nc \NewDocumentCommand { ebproofx#1 }{ #2 } { #3 }
+  \seq_gput_right:Nn \g_@@_statements_seq { #1 }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@@_new_deprecated_statement:nnnn}
+%   Define a deprecated statement. The syntax is the same as above except that
+%   an extra argument in third position indicates what should be used instead.
+%   The effect is the same except that a warning message is issued the first
+%   time the statement is used.
+%    \begin{macrocode}
+\cs_new:Nn \@@_new_deprecated_statement:nnnn {
+  \cs_new:cpn { ebproofx_#1_warning: } {
+    \PackageWarning { ebproofx } { \token_to_str:c{#1}~is~deprecated,~#3 }
+    \cs_gset:cn { ebproofx_#1_warning: } { }
+  }
+  \@@_new_statement:nnn { #1 } { #2 }
+    { \use:c { ebproofx_#1_warning: } #4 }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+%
+% \subsubsection{Basic commands}
+%
+% \begin{macro}{\ebproofxset,\set}
+%   This is a simple wrapper around \cs{keys_set:nn}.
+%    \begin{macrocode}
+\@@_new_statement:nnn { set } { m } {
+  \keys_set:nn { ebproofx } { #1 }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\hypo}
+%   This is mostly a wrapper around \cs{ebproofx_push_statement:n}, with
+%   material to handle options and the statements macros.
+%    \begin{macrocode}
+\@@_new_statement:nnn { hypo } { O{} m } {
+  \group_begin:
+  \@@_restore_statements:
+  \keys_set:nn { ebproofx } { #1 }
+  \@@_push_statement:n { #2 }
+  \group_end:
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\infer}
+%   This is a bit more involved than \cs{hypo} because we have to handle rule
+%   style options and joining.
+%    \begin{macrocode}
+\@@_new_statement:nnn { infer } { O{} m O{} m } {
+  \group_begin:
+  \@@_restore_statements:
+  \keys_set_known:nnN { ebproofx / rule~style } { #1 } \l_tmpa_tl
+  \keys_set:nV { ebproofx } \l_tmpa_tl
+  \tl_set:Nn \l_@@_right_label_tl { #3 }
+  \@@_join_horizontal:n { #2 }
+  \@@_push_statement:n { #4 }
+  \@@_join_vertical:
+  \group_end:
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\ellipsis}
+%   An ellipsis is made by hand using vertical leaders to render the dots
+%   after rendering the label.
+%    \begin{macrocode}
+\@@_new_statement:nnn { ellipsis } { m m } {
+  \group_begin:
+  \@@_restore_statements:
+  \tl_clear:N \l_@@_rule_code_tl
+  \@@_make_split:Nnn \l_@@_a_box { } {
+    \vbox_set:Nn \l_tmpa_box {
+      \skip_vertical:n { 1.2ex }
+      \hbox:n { \tex_ignorespaces:D #1 }
+      \skip_vertical:n { 1.2ex }
+    }
+    \vbox_to_ht:nn { \box_ht:N \l_tmpa_box } {
+      \tex_xleaders:D \vbox_to_ht:nn { .8ex }
+        { \tex_vss:D \hbox:n { . } \tex_vss:D }
+      \tex_vfill:D
+    }
+    \hbox_overlap_right:n { ~ \box_use:N \l_tmpa_box }
+  }
+  \@@_push:N \l_@@_a_box
+  \@@_join_vertical:
+  \@@_push_statement:n {#2}
+  \@@_join_vertical:
+  \group_end:
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsubsection{Modifying trees}
+%
+% \begin{macro}{\rewrite}
+%   Rewrite the box at the top of the stack while preserving its dimensions an
+%   marks. The code is typeset in horizontal mode, with control sequences to
+%   access the original box and its marks.
+%    \begin{macrocode}
+\@@_new_statement:nnn { rewrite } { m } {
+  \group_begin:
+  \@@_restore_statements:
+  \@@_pop:N \l_@@_a_box
+  \box_set_eq:Nc \l_tmpa_box { \@@_box:N \l_@@_a_box }
+  \hbox_set:Nn \l_tmpb_box {
+    \cs_set_eq:NN \treebox \l_tmpa_box
+    \cs_set:Npn \treemark { \@@_mark:Nn \l_@@_a_box }
+    { #1 }
+  }
+  \box_set_wd:Nn \l_tmpb_box { \box_wd:c { \@@_box:N \l_@@_a_box } }
+  \box_set_ht:Nn \l_tmpb_box { \box_ht:c { \@@_box:N \l_@@_a_box } }
+  \box_set_dp:Nn \l_tmpb_box { \box_dp:c { \@@_box:N \l_@@_a_box } }
+  \box_set_eq:cN { \@@_box:N \l_@@_a_box } \l_tmpb_box
+  \@@_push:N \l_@@_a_box
+  \group_end:
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\delims}
+%   Insert \cs{left} and \cs{right} delimiters without changing the alignment.
+%    \begin{macrocode}
+\@@_new_statement:nnn { delims } { m m } {
+  \group_begin:
+  \@@_restore_statements:
+  \@@_pop:N \l_@@_a_box
+  \hbox_set:Nn \l_tmpa_box
+    { $ \tex_vcenter:D { \box_use:c { \@@_box:N \l_@@_a_box } } $ }
+  \dim_set:Nn \l_tmpa_dim
+    { \box_ht:N \l_tmpa_box - \box_ht:c { \@@_box:N \l_@@_a_box } }
+  \hbox_set:cn { \@@_box:N \l_@@_a_box } {
+    $ #1 \tex_vrule:D
+      height \box_ht:N \l_tmpa_box depth \box_dp:N \l_tmpa_box width 0pt
+    \tex_right:D . $
+  }
+  \@@_shift_x:Nn \l_@@_a_box
+    { \box_wd:c { \@@_box:N \l_@@_a_box } }
+  \hbox_set:cn { \@@_box:N \l_@@_a_box } {
+    \hbox_unpack:c { \@@_box:N \l_@@_a_box }
+    $ \tex_left:D . \box_use:N \l_tmpa_box #2 $
+  }
+  \hbox_set:cn { \@@_box:N \l_@@_a_box }
+    { \box_move_down:nn { \l_tmpa_dim }
+        { \box_use:c { \@@_box:N \l_@@_a_box } } }
+  \@@_push:N \l_@@_a_box
+  \group_end:
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\overlay}
+%   Pop two trees and append the second tree as an overlay over the first one,
+%   so that the baselines and axes match. The bounding box of the result
+%   adjusts to contain both trees.
+%    \begin{macrocode}
+\@@_new_statement:nnn { overlay } { } {
+  \group_begin:
+  \@@_pop:N \l_@@_a_box
+  \@@_pop:N \l_@@_b_box
+  \@@_overlay:NN \l_@@_a_box \l_@@_b_box
+  \@@_push:N \l_@@_a_box
+  \group_end:
+}
+%    \end{macrocode}
+% \end{macro}
+%
+%
+% \subsubsection{The extension}
+%
+% \begin{macrocode}
+\int_new:N \g_@@_sublevel_int
+\box_new:N \g_@@_substack_box
+\seq_new:N \g_@@_substack_seq
+
+\cs_new:Nn \@@_clear_substack:
+  {
+    \int_gset:Nn \g_@@_sublevel_int { 0 }
+    \hbox_gset:Nn \g_@@_substack_box { }
+    \seq_gclear:N \g_@@_substack_seq
+  }
+
+\cs_new:Nn \@@_subpush:N
+  {
+    \int_gincr:N \g_@@_sublevel_int
+    \hbox_gset:Nn \g_@@_substack_box
+      { \hbox_unpack:N \g_@@_substack_box \box_use:c { \@@_box:N #1 } }
+    \seq_gput_left:Nv \g_@@_substack_seq
+      { \@@_marks:N #1 }
+  }
+
+\cs_new:Nn \@@_subpop:N
+  {
+    \int_compare:nNnTF { \g_@@_sublevel_int } > { 0 }
+      {
+        \int_gdecr:N \g_@@_sublevel_int
+        \hbox_gset:Nn \g_@@_substack_box {
+          \hbox_unpack:N \g_@@_substack_box
+          \box_gset_to_last:N \g_tmpa_box
+        }
+        \box_set_eq_drop:cN { \@@_box:N #1 } \g_tmpa_box
+        \seq_gpop_left:NN \g_@@_substack_seq \l_tmpa_tl
+        \tl_set_eq:cN { \@@_marks:N #1 } \l_tmpa_tl
+      }
+      { \PackageError{ebproofx}{Missing~premiss~in~a~proof~tree}{} \@@_clear:N #1 }
+  }
+
+\cs_new:Nn \@@_append_subvertical:NN
+  {
+    \bool_if:NTF \l_@@_updown_bool
+      { \@@_append_above:NN #1 #2 }
+      { \@@_append_below:NN #1 #2 }
+  }
+
+\cs_new:Nn \@@_join_subvertical:n
+  {
+    \group_begin:
+    \@@_subpop:N \l_@@_a_box
+    \prg_replicate:nn { #1 - 1 }
+      {
+        \@@_subpop:N \l_@@_b_box
+        \@@_enlarge_conclusion:NN \l_@@_b_box \l_@@_a_box
+
+        \@@_make_vertical:Nnnn \l_@@_c_box
+          { \@@_mark:Nn \l_@@_b_box {axis} - \@@_mark:Nn \l_@@_b_box {left} }
+          { \@@_mark:Nn \l_@@_b_box {right} - \@@_mark:Nn \l_@@_b_box {left} }
+          { \skip_vertical:N \l_@@_rule_margin_dim }
+        \@@_vcenter:N \l_@@_b_box
+        \@@_append_subvertical:NN \l_@@_a_box \l_@@_c_box
+
+        \@@_append_subvertical:NN \l_@@_a_box \l_@@_b_box
+      }
+    \@@_push:N \l_@@_a_box
+    \group_end:
+  }
+
+\cs_new:Nn \@@_renew_statement:nnn
+  {
+    \exp_args:Nc \RenewDocumentCommand { ebproofx#1 }{ #2 } { #3 }
+    \seq_gput_right:Nn \g_@@_statements_seq { #1 }
+  }
+
+\cs_generate_variant:Nn \clist_map_inline:nn { xn }
+\@@_renew_statement:nnn { infer } { O{} m O{} m }
+  {
+    \group_begin:
+    \@@_restore_statements:
+    \keys_set_known:nnN { ebproofx / rule~style } { #1 } \l_tmpa_tl
+    \keys_set:nV { ebproofx } \l_tmpa_tl
+    \tl_set:Nn \l_@@_right_label_tl { #3 }
+
+    \@@_clear_substack:
+    \clist_map_inline:xn { \clist_reverse:n { #2 } }
+      {
+        \@@_join_horizontal:n { ##1 }
+        \@@_pop:N \l_@@_a_box
+        \@@_subpush:N \l_@@_a_box
+      }
+    \@@_join_subvertical:n { \clist_count:n { #2 } }
+
+    \@@_push_statement:n { #4 }
+    \@@_join_vertical:
+    \group_end:
+  }
+% \end{macrocode}
+%
+%
+% \subsubsection{Deprecated statements}
+%
+% These statements were defined in versions 1.x of the package, they are
+% preserved for temporary upwards compatibility and will be removed in a
+% future version.
+%    \begin{macrocode}
+\@@_new_deprecated_statement:nnnn { Alter } { m }
+  { use~\token_to_str:c{rewrite}~instead } { \ebproofxrewrite{ #1 \box\treebox } }
+\@@_new_deprecated_statement:nnnn { Delims } { }
+  { use~\token_to_str:c{delims}~instead } { \ebproofxdelims }
+\@@_new_deprecated_statement:nnnn { Ellipsis } { }
+  { use~\token_to_str:c{ellipsis}~instead } { \ebproofxellipsis }
+\@@_new_deprecated_statement:nnnn { Hypo } { }
+  { use~\token_to_str:c{hypo}~instead } { \ebproofxhypo }
+\@@_new_deprecated_statement:nnnn { Infer } { }
+  { use~\token_to_str:c{infer}~instead } { \ebproofxinfer }
+%    \end{macrocode}
+%
+%
+% \subsubsection{Environment interface}
+%
+% The stack is initialised globally. The \env{prooftree} environment does not
+% clear the stack, instead it saves the initial level in order to check that
+% statements are properly balanced. This allows for nested uses of the
+% environment, if it ever happens to be useful.
+%
+%    \begin{macrocode}
+\@@_clear_stack:
+\tl_new:N \l_@@_start_level_tl
+%    \end{macrocode}
+%
+% \begin{macro}{prooftree,prooftree*}
+%   The \env{prooftree} environment.
+%    \begin{macrocode}
+\NewDocumentEnvironment { prooftree } { s O{} } {
+  \group_align_safe_begin:
+  \keys_set_known:nnN { ebproofx / proof~style } { #2 } \l_tmpa_tl
+  \keys_set:nV { ebproofx } \l_tmpa_tl
+  \tl_set:Nx \l_@@_start_level_tl { \int_use:N \g_@@_level_int }
+  \vbox_set:Nw \l_tmpa_box
+  \@@_setup_statements:
+} {
+  \vbox_set_end:
+  \@@_pop:N \l_@@_a_box
+  \int_compare:nNnF { \g_@@_level_int } = { \tl_use:N \l_@@_start_level_tl } {
+    \PackageError{ebproofx}{Malformed~proof~tree}{
+      Some~hypotheses~were~declared~but~not~used~in~this~tree.}
+  }
+  \IfBooleanTF { #1 } {
+    \[ \box_use:c { \@@_box:N \l_@@_a_box } \]
+    \ignorespacesafterend
+  } {
+    \hbox_unpack:N \c_empty_box
+    \bool_if:NTF \l_@@_center_bool {
+      \hbox:n { $ \tex_vcenter:D { \box_use:c { \@@_box:N \l_@@_a_box } } $ }
+    } {
+      \box_use:c { \@@_box:N \l_@@_a_box }
+    }
+  }
+  \group_align_safe_end:
+}
+%    \end{macrocode}
+% A trick for the starred version:
+%    \begin{macrocode}
+\cs_new:cpn { prooftree* } { \prooftree* }
+\cs_new:cpn { endprooftree* } { \endprooftree }
+%    \end{macrocode}
+% \end{macro}
+%
+%
+% \begin{macro}{InfRule}
+%   The \env{InfRule} environment.
+%    \begin{macrocode}
+\NewTblrEnviron{@ruleenv}
+\SetTblrInner[@ruleenv]{belowsep=0pt,stretch=0}
+\SetTblrOuter[@ruleenv]{baseline=b}
+\NewDocumentEnvironment { InfRule } { m +b }
+  {
+    \begin{@ruleenv}{l}
+      \smaller{\textsc{#1}} \\
+      \begin{prooftree} #2 \end{prooftree}
+    \end{@ruleenv}
+  }
+  {}
+%    \end{macrocode}
+% \end{macro}
+%
+%
+%    \begin{macrocode}
+%</package>
+%    \end{macrocode}
+%
+% \end{implementation}
