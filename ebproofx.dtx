@@ -72,16 +72,21 @@
 %
 % \section{Introduction}
 %
-% The \pkg{ebproofx} package provides commands to typeset proof trees and rules, in the
-% style of sequent calculus and related systems.
-
-% This is an extended work of \href{https://ctan.org/pkg/ebproof}{\pkg{ebproof}} that allows users to stack multiple hypotheses vertically\footnote{This example is taken from \textit{Types and Programming Languages} by Benjamin C. Pierce.}:
+% The \pkg{ebproofx} package provides an ergonomic and scalable interface for typesetting proof trees.
+% However, it has been a long-standing issue to stack hypotheses using ebproof.
+%
+% This is an extended work of \href{https://ctan.org/pkg/ebproof}{\pkg{ebproof}} that allows users to stack multiple hypotheses vertically\footnote{\url{https://framagit.org/manu/ebproof/issues/7}, \url{https://tex.stackexchange.com/q/530939}}.
+% It generalizes \cs{infer} to accept a comma-separated list of integers, and a single integer works as well.
+% Moreover, I believe this will reduce, if not resolve, a need to make ebproof compatible with the \href{https://ctan.org/pkg/mathpartir}{mathpartir} environment\footnote{\url{https://framagit.org/manu/ebproof/issues/6}, \mbox{\url{https://github.com/jonsterling/latex-ebproof-rules}}}.
+%
+% In addition, it provides a wrapper environment \env{InfRule} that typesets the rule names more space-efficiently.
+% Here is an example\footnote{This example is taken from \textit{Types and Programming Languages} by Benjamin C. Pierce.}:
 % \begin{example}
 %   \begin{InfRule}{TA-App}
 %     \hypo{\Gamma \vdasharrow t_1 : T_1}
 %     \hypo{%
 %       \Gamma \vdasharrow%
-%       T_1 \Uparrow (T_{11} \to T_{12})}
+%         T_1 \Uparrow (T_{11} \to T_{12})}
 %     \hypo{\Gamma \vdasharrow t_2 : T_2}
 %     \hypo{\Gamma \vdasharrow T_2 <: T_{11}}
 %     \infer{2, 2}{%
@@ -94,51 +99,66 @@
 %
 % \section{Environments}
 %
-% \begin{function}{prooftree,prooftree*}
-%   \begin{syntax}
-%     \verb|\begin{prooftree}|\oarg{options}
-%     ~ \meta{statements}
-%     \verb|\end{prooftree}|
-%   \end{syntax}
-%   The package provides the \env{prooftree} environment, in standard and
-%   starred variants.
-%   This typesets the proof tree described by the \meta{statements}, as
-%   described in section~\ref{sec:statements}.
-%   The \meta{options} provide default formatting options for the proof tree,
-%   available options are described in section~\ref{sec:options}.
+% Here we only explain the newly introduced environment \env{InfRule}.
+% Consult the documentation of \pkg{ebproof} for other environments.
 %
-%   Following the conventions of \pkg{amsmath} for alignment environments, the
-%   non-starred version produces a proof tree at the current position in the
-%   text flow (it can be used in math mode or text mode) while the starred
-%   version typesets the proof on a line of its own, like a displayed formula.
+% \begin{function}{InfRule}
+%   \begin{syntax}
+%     \verb|\begin{InfRule}|\marg{name}\oarg{alignment}
+%     ~ \meta{statements}
+%     \verb|\end{InfRule}|
+%   \end{syntax}
+%   This typesets the rule described by the \meta{statements}.
+%   The \meta{alignment} provides an alignment specifier for the rule name \meta{name}---\verb/l/ for left, \verb/r/ for right, and \verb/c/ for center are available.
+%   \verb/l/ is the default alignment specifier.
 % \end{function}
 %
 % \begin{example}
-%   \[
-%     \begin{prooftree}
-%       \infer0{ \vdash A }
-%       \hypo{ \vdash B } \infer1{ \vdash B, C }
-%       \infer2{ \vdash A\wedge B, C }
-%     \end{prooftree}
-%     \quad \rightsquigarrow \quad
-%     \begin{prooftree}
-%       \infer0{ \vdash A } \hypo{ \vdash B }
-%       \infer2{ \vdash A\wedge B }
-%       \infer1{ \vdash A\wedge B, C }
-%     \end{prooftree}
-%   \]
+%   \begin{InfRule}{T-App}[r]
+%     \hypo{\Gamma \vdash t_1 : T_{11} \to T_{12}}
+%     \hypo{\Gamma \vdash t_2 : T_2}
+%     \infer2{\Gamma \vdash t_1\ t_2 : T_{12}}
+%   \end{InfRule}
 % \end{example}
 %
+%
 % \section{Statements}
-% \label{sec:statements}
 %
-% Statements describe proofs in postfix notation: when typesetting a proof tree
-% whose last rule has, say, two premisses, you will first write statements for
-% the subtree of the first premiss, then statements for the subtree of the
-% second premiss, then a statement like \cs{infer2}\{\meta{conclusion}\} to
-% build an inference with these two subtrees as premisses and the given text as
-% conclusion.
+% Here we only explain the extended statement \cs{infer}.
+% Consult the documentation of \pkg{ebproof} for other statements.
 %
+% \begin{function}{\infer}
+%   \begin{syntax}
+%     \cs{infer}\oarg{options}\marg{arities}\oarg{label}\marg{text}
+%   \end{syntax}
+%   The statement \cs{infer} builds an inference step by taking some proof
+%   trees from the top of the stack, assembling them with a rule joining their
+%   conclusions and putting a new conclusion below.
+%   The \meta{arities} are the comma-separated list of sub-proofs, it may be a list of any number
+%   including 0 (in this case there will be a line above the conclusion but no
+%   sub-proof).
+%   A single number is also accepted, as the original \cs{infer} command from the \pkg{ebproof} package.
+%   If \meta{label} is present, it is used as the label on the right of the
+%   inference line; it is equivalent to using the \cmd{right label} option.\footnote{This paragraph is largely taken from the original \pkg{ebproof} package documentation word-by-word.}
+% \end{function}
+%
+% \begin{example}
+%   \begin{prooftree}
+%     \hypo{\Gamma \vdash 1}
+%     \hypo{\Gamma \vdash 2}
+%     \hypo{\Gamma \vdash 3}
+%     \hypo{\Gamma \vdash 4}
+%     \infer{3,1}{\Gamma \vdash 1234}
+%     \hypo{\Gamma \vdash 5}
+%     \hypo{\Gamma \vdash 6}
+%     \hypo{\Gamma \vdash 7}
+%     \hypo{\Gamma \vdash 8}
+%     \hypo{\Gamma \vdash 9}
+%     \infer{2,1,2}{\Gamma \vdash 56789}
+%     \hypo{\Gamma \vdash 10}
+%     \infer{2,1}{\Gamma \vdash 12345678910}
+%   \end{prooftree}
+% \end{example}
 %
 % \end{documentation}
 %
@@ -161,8 +181,7 @@
 %
 % \subsection{Parameters}
 %
-% We first declare all options. For the meaning of options, see
-% section~\ref{sec:options}.
+% We first declare all options.
 %
 %    \begin{macrocode}
 \bool_new:N \l_@@_updown_bool
@@ -1080,8 +1099,14 @@ label~axis .dim_set:N = \l_@@_label_axis_dim,
         \@@_enlarge_conclusion:NN \l_@@_b_box \l_@@_a_box
 
         \@@_make_vertical:Nnnn \l_@@_c_box
-          { \@@_mark:Nn \l_@@_b_box {axis} - \@@_mark:Nn \l_@@_b_box {left} }
-          { \@@_mark:Nn \l_@@_b_box {right} - \@@_mark:Nn \l_@@_b_box {left} }
+          {
+            \@@_mark:Nn \l_@@_b_box {axis}
+            - \@@_mark:Nn \l_@@_b_box {left}
+          }
+          {
+            \@@_mark:Nn \l_@@_b_box {right}
+            - \@@_mark:Nn \l_@@_b_box {left}
+          }
           { \skip_vertical:N \l_@@_rule_margin_dim }
         \@@_vcenter:N \l_@@_b_box
         \@@_append_subvertical:NN \l_@@_a_box \l_@@_c_box
@@ -1199,11 +1224,11 @@ label~axis .dim_set:N = \l_@@_label_axis_dim,
 \NewTblrEnviron{@ruleenv}
 \SetTblrInner[@ruleenv]{belowsep=0pt,stretch=0}
 \SetTblrOuter[@ruleenv]{baseline=b}
-\NewDocumentEnvironment { InfRule } { m +b }
+\NewDocumentEnvironment { InfRule } { m O{l} +b }
   {
-    \begin{@ruleenv}{l}
+    \begin{@ruleenv}{#2}
       \smaller{\textsc{#1}} \\
-      \begin{prooftree} #2 \end{prooftree}
+      \begin{prooftree} #3 \end{prooftree}
     \end{@ruleenv}
   }
   {}
