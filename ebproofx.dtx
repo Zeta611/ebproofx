@@ -148,7 +148,7 @@
 %     \hypo{\Gamma \vdash 2}
 %     \hypo{\Gamma \vdash 3}
 %     \hypo{\Gamma \vdash 4}
-%     \infer{3,1}{\Gamma \vdash 1234}
+%     \infer{1,3}{\Gamma \vdash 1234}
 %     \hypo{\Gamma \vdash 5}
 %     \hypo{\Gamma \vdash 6}
 %     \hypo{\Gamma \vdash 7}
@@ -1097,6 +1097,7 @@ label~axis .dim_set:N = \l_@@_label_axis_dim,
       {
         \@@_subpop:N \l_@@_b_box
         \@@_enlarge_conclusion:NN \l_@@_b_box \l_@@_a_box
+        \@@_enlarge_conclusion:NN \l_@@_a_box \l_@@_b_box
 
         \@@_make_vertical:Nnnn \l_@@_c_box
           {
